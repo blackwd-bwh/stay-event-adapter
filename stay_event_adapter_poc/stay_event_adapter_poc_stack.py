@@ -31,7 +31,7 @@ class StayEventAdapterPocStack(Stack):
                             region="us-west-2"
                         ),**kwargs
         )
-
+        #
         random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
         bucket_name = f"poc-stay-event-adapter-bucket-{random_suffix}"
         
@@ -106,7 +106,7 @@ class StayEventAdapterPocStack(Stack):
         # Lambda function for processing
         stay_event_adapter_lambda = lambda_fn.Function(
             self, "StayEventAdapterLambda",
-            runtime=lambda_fn.Runtime.PYTHON_3_11,
+            runtime=lambda_fn.Runtime.PYTHON_3_13,
             handler="stay_event_adapter.handler.handler",
             code=lambda_fn.Code.from_asset(lambda_code_path),
             timeout=Duration.seconds(90),
@@ -126,7 +126,7 @@ class StayEventAdapterPocStack(Stack):
         # Lambda function for SNS subscription
         test_subscriber_lambda = lambda_fn.Function(
             self, "TestSnsSubscriberLambda",
-            runtime=lambda_fn.Runtime.PYTHON_3_11,
+            runtime=lambda_fn.Runtime.PYTHON_3_13,
             handler="test_subscriber.handler.handler",
             code=lambda_fn.Code.from_asset(lambda_code_path),
             tracing=lambda_fn.Tracing.ACTIVE,
