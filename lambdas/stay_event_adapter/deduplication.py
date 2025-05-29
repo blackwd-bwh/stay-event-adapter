@@ -1,10 +1,12 @@
-import boto3
+"""Deduplication logic for checking and storing event hashes in DynamoDB."""
+
+from datetime import datetime, timedelta
 import hashlib
 import os
-from datetime import datetime, timedelta
-
-# AWS X-Ray instrumentation
+from botocore.exceptions import ClientError
+import boto3
 from aws_xray_sdk.core import patch_all
+
 patch_all()
 
 dynamodb = boto3.resource("dynamodb")
@@ -32,6 +34,6 @@ def is_duplicate(row: str) -> bool:
             Item={"EventHash": row_hash, "TTL": ttl}
         )
         return False
-    except Exception as e:
+    except ClientError as e:
         print(f"Error checking/inserting dedup entry: {e}")
-        return False  
+        return False

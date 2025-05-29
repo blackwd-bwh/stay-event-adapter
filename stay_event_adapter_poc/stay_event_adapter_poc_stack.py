@@ -1,3 +1,8 @@
+"""
+CDK stack definition for the Stay Event Adapter Proof of Concept.
+Sets up Lambda functions, queues, alarms, secrets, and supporting resources.
+"""
+
 import os
 from aws_cdk import (
     Stack,
@@ -13,18 +18,21 @@ from aws_cdk import (
     aws_ec2 as ec2,
     CfnOutput,
     Duration,
-    Environment,
     RemovalPolicy,
 )
 from aws_cdk.aws_lambda_event_sources import SqsEventSource
 from constructs import Construct
 
 class StayEventAdapterPocStack(Stack):
+    """
+    Defines the CDK stack for the Stay Event Adapter POC.
+    Includes SNS topics, SQS queues, Lambda functions, CloudWatch alarms,
+    and Redshift secret configuration.
+    """
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope,
-                         construct_id,
-                         env=Environment(account="456776821050", region="us-west-2"),
-                         **kwargs)
+                        construct_id,
+                        **kwargs)
 
         base_dir = os.path.join(os.path.dirname(__file__), "..", "lambdas")
         adapter_lambda_path = os.path.join(base_dir, "stay_event_adapter")
@@ -90,14 +98,21 @@ class StayEventAdapterPocStack(Stack):
         data_available_queue = sqs.Queue(
             self, "DataAvailableQueue",
             queue_name="stay-event-data-available",
-            retention_period=Duration.days(4),
+            retention_period=Duration.hours(2),
             visibility_timeout=Duration.seconds(120)
         )
 
-        redshift_secret = secretsmanager.Secret.from_secret_complete_arn(
-            self, "RedshiftCredentialsSecret",
-            "arn:aws:secretsmanager:us-west-2:456776821050:secret:promo-engine/redshift-credentials-VYpjGO"
+        redshift_secret_arn = (
+            "arn:aws:secretsmanager:us-west-2:456776821050:secret:"
+            "promo-engine/redshift-credentials-VYpjGO"
         )
+
+        redshift_secret = secretsmanager.Secret.from_secret_complete_arn(
+            self,
+            "RedshiftCredentialsSecret",
+            redshift_secret_arn,
+        )
+
 
         stay_event_adapter_lambda = lambda_fn.Function(
             self, "StayEventAdapterLambda",

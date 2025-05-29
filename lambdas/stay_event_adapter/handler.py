@@ -1,9 +1,12 @@
+"""Lambda handler for processing stay-completed events from Redshift and publishing to SNS."""
+
 import json
 import os
+import hashlib
+from datetime import datetime, timedelta
+
 import boto3
 import redshift_connector
-from datetime import datetime, timedelta
-import hashlib
 
 dynamodb = boto3.resource("dynamodb")
 sns_client = boto3.client("sns")
@@ -37,10 +40,10 @@ def handler(event, context):
         SELECT * 
         FROM bwhrdw.fact_bookings
         WHERE dim_dist_channel_3_key = '677'
-          AND cancel_dt_key IS NULL
-          AND rewards_id <> 'XXXXX'
-          AND rewards_id IS NOT NULL
-          AND departure_dt_key::DATE < CURRENT_DATE - 1
+            AND cancel_dt_key IS NULL
+            AND rewards_id <> 'XXXXX'
+            AND rewards_id IS NOT NULL
+            AND departure_dt_key::DATE < CURRENT_DATE - 1
         LIMIT 100;
         """
         cursor.execute(query)
@@ -60,7 +63,7 @@ def handler(event, context):
                         print("Duplicate detected, skipping.")
                 else:
                     print("Filtered out row.")
-            except Exception as e:
+            except redshift_connector.Error as e:
                 print("Row processing error:", e)
                 continue
 
