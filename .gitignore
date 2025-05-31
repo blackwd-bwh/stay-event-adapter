@@ -3,9 +3,15 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Ignore Lambda Layer build artifacts
+lambda-layers/data-services-layer/python/
+lambda-layers/data-services-layer/*.zip
+lambda-layers/*.zip
+
 # CDK
 cdk.out/
 build/
+cdk.context.json
 
 # Editor
 .vscode/

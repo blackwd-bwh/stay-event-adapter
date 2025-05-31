@@ -113,6 +113,13 @@ class StayEventAdapterPocStack(Stack):
             redshift_secret_arn,
         )
 
+        data_services_layer = lambda_fn.LayerVersion(
+            self, "DataServicesLayer",
+            layer_version_name="data-services-layer",
+            compatible_runtimes=[lambda_fn.Runtime.PYTHON_3_13],
+            code=lambda_fn.Code.from_asset("lambda-layers/data-services-layer.zip"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
 
         stay_event_adapter_lambda = lambda_fn.Function(
             self, "StayEventAdapterLambda",
@@ -125,6 +132,7 @@ class StayEventAdapterPocStack(Stack):
             vpc=vpc,
             vpc_subnets=subnets,
             security_groups=[security_group],
+            layers=[data_services_layer],
             environment={
                 "SNS_TOPIC_ARN": stay_completed_sns_topic.topic_arn,
                 "DEDUP_TABLE_NAME": dedup_table.table_name,

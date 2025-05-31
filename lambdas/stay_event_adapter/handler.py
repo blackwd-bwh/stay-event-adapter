@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 
 import boto3
 import redshift_connector
+from models.booking_row import BookingRow
+
 
 dynamodb = boto3.resource("dynamodb")
 sns_client = boto3.client("sns")
@@ -48,7 +50,7 @@ def handler(event, context):
         """
         cursor.execute(query)
         columns = [desc[0] for desc in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        rows = [BookingRow(**dict(zip(columns, row))) for row in cursor.fetchall()]
         print(f"Fetched {len(rows)} rows")
 
         for row in rows:
@@ -73,31 +75,31 @@ def handler(event, context):
         print("Top-level error:", e)
         raise
 
-def is_stay_completed(row):
+def is_stay_completed(row: BookingRow):
     try:
         return (
-            row.get('departure_dt_key') and
-            row['departure_dt_key'] < current_date_key() and
-            not row.get('cancel_dt_key') and
-            row.get('rate_code') != 'FX' and
-            row.get('dim_dist_channel_1_key') != '4' and
-            row.get('rewards_id') and
-            row['rewards_id'] != 'XXXXX'
+            row.departure_dt_key and
+            row.departure_dt_key < current_date_key() and
+            not row.cancel_dt_key and
+            row.rate_code != 'FX' and
+            row.dim_dist_channel_1_key != '4' and
+            row.rewards_id and
+            row.rewards_id != 'XXXXX'
         )
     except Exception as e:
         print("Error in filtering row:", e)
         return False
 
-def transform_to_event(row):
+def transform_to_event(row: BookingRow):
     return {
         "eventType": "StayCompleted",
-        "rewardsId": row.get('rewards_id'),
-        "reservationId": row.get("reservation_id"),
-        "propertyId": row.get("property_id"),
-        "arrivalDate": row.get("arrival_dt_key"),
-        "departureDate": row.get("departure_dt_key"),
-        "rateCode": row.get("rate_code"),
-        "distributionChannel": row.get("dim_dist_channel_3_key")
+        "rewardsId": row.rewards_id,
+        "reservationId": row.reservation_id,
+        "propertyId": row.property_id,
+        "arrivalDate": row.arrival_dt_key,
+        "departureDate": row.departure_dt_key,
+        "rateCode": row.rate_code,
+        "distributionChannel": row.dim_dist_channel_3_key
     }
 
 def publish_event(payload):
@@ -110,8 +112,8 @@ def publish_event(payload):
     except Exception as e:
         print("Failed to publish:", e)
 
-def hash_row(row):
-    row_string = json.dumps(row, sort_keys=True)
+def hash_row(row: BookingRow):
+    row_string = json.dumps(row.dict(), sort_keys=True, default=str)
     return hashlib.sha256(row_string.encode('utf-8')).hexdigest()
 
 def is_duplicate(event_hash):
