@@ -1,8 +1,7 @@
 # lambdas/stay_event_adapter/models/booking_row.py
 
-from pydantic import BaseModel
 from typing import Optional
-from decimal import Decimal
+from pydantic import BaseModel
 
 class BookingRow(BaseModel):
     rewards_id: Optional[str]
@@ -17,4 +16,3 @@ class BookingRow(BaseModel):
 
 class Config:
     extra = "ignore"
-

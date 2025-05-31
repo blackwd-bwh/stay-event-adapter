@@ -7,6 +7,9 @@ __pycache__/
 lambda-layers/data-services-layer/python/
 lambda-layers/data-services-layer/*.zip
 lambda-layers/*.zip
+*.zip
+lambda-layers/**/.layer_build_tmp/
+
 
 # CDK
 cdk.out/
