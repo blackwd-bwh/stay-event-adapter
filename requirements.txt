@@ -5,6 +5,7 @@ boto3==1.37.31
 botocore==1.37.31
 aws-xray-sdk==2.14.0
 redshift-connector==2.1.6
+certifi
 
 attrs==25.3.0
 cattrs==24.1.3

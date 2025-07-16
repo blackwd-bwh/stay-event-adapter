@@ -3,17 +3,29 @@
 import json
 import os
 import hashlib
+from dataclasses import asdict
 from datetime import datetime, timedelta
+
+# Monkey patch ssl to use certifi for all clients
+import ssl
+import certifi
+ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
 
 import boto3
 import redshift_connector
 from models.booking_row import BookingRow
 
+print("Verifying cert file path:")
+print("Exists:", os.path.exists(certifi.where()))
+print("Dir listing (certifi):", os.listdir(os.path.dirname(certifi.where())))
 
-dynamodb = boto3.resource("dynamodb")
-sns_client = boto3.client("sns")
-secrets_client = boto3.client("secretsmanager")
+# AWS clients (no need to manually pass `verify=...` now)
+boto3_session = boto3.session.Session()
+dynamodb = boto3_session.resource("dynamodb")
+sns_client = boto3_session.client("sns")
+secrets_client = boto3_session.client("secretsmanager")
 
+# Environment vars
 SNS_TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
 DEDUP_TABLE_NAME = os.environ["DEDUP_TABLE_NAME"]
 REDSHIFT_SECRET_ARN = os.environ["REDSHIFT_SECRET_ARN"]
@@ -32,21 +44,28 @@ def get_redshift_connection():
         port=int(secret["port"])
     )
 
-def handler(event, context):
+def handler(event, _):
     print("Received event:", json.dumps(event, indent=2))
 
     try:
         conn = get_redshift_connection()
         cursor = conn.cursor()
         query = """
-        SELECT * 
+        SELECT
+            rewards_id,
+            resv_detail_id,
+            property_id,
+            arrival_dt_key,
+            departure_dt_key,
+            rate_code,
+            dim_dist_channel_3_key
         FROM bwhrdw.fact_bookings
-        WHERE dim_dist_channel_3_key = '677'
-            AND cancel_dt_key IS NULL
-            AND rewards_id <> 'XXXXX'
+        WHERE departure_dt_key::DATE = CURRENT_DATE
             AND rewards_id IS NOT NULL
-            AND departure_dt_key::DATE < CURRENT_DATE - 1
-        LIMIT 100;
+            AND rewards_id <> 'XXXXX'
+            AND cancel_dt_key IS NULL
+            AND rate_code <> 'FX'
+            AND dim_dist_channel_1_key <> '4'
         """
         cursor.execute(query)
         columns = [desc[0] for desc in cursor.description]
@@ -54,17 +73,15 @@ def handler(event, context):
         print(f"Fetched {len(rows)} rows")
 
         for row in rows:
+            print(json.dumps(asdict(row), default=str))
             try:
-                if is_stay_completed(row):
-                    row_hash = hash_row(row)
-                    if not is_duplicate(row_hash):
-                        event_payload = transform_to_event(row)
-                        publish_event(event_payload)
-                        mark_as_processed(row_hash)
-                    else:
-                        print("Duplicate detected, skipping.")
+                row_hash = hash_row(row)
+                if not is_duplicate(row_hash):
+                    event_payload = transform_to_event(row)
+                    publish_event(event_payload)
+                    mark_as_processed(row_hash)
                 else:
-                    print("Filtered out row.")
+                    print("Duplicate detected, skipping.")
             except redshift_connector.Error as e:
                 print("Row processing error:", e)
                 continue
@@ -75,26 +92,11 @@ def handler(event, context):
         print("Top-level error:", e)
         raise
 
-def is_stay_completed(row: BookingRow):
-    try:
-        return (
-            row.departure_dt_key and
-            row.departure_dt_key < current_date_key() and
-            not row.cancel_dt_key and
-            row.rate_code != 'FX' and
-            row.dim_dist_channel_1_key != '4' and
-            row.rewards_id and
-            row.rewards_id != 'XXXXX'
-        )
-    except Exception as e:
-        print("Error in filtering row:", e)
-        return False
-
 def transform_to_event(row: BookingRow):
     return {
         "eventType": "StayCompleted",
         "rewardsId": row.rewards_id,
-        "reservationId": row.reservation_id,
+        "reservationDetailId": row.resv_detail_id,
         "propertyId": row.property_id,
         "arrivalDate": row.arrival_dt_key,
         "departureDate": row.departure_dt_key,
@@ -113,7 +115,8 @@ def publish_event(payload):
         print("Failed to publish:", e)
 
 def hash_row(row: BookingRow):
-    row_string = json.dumps(row.dict(), sort_keys=True, default=str)
+    row_string = json.dumps(asdict(row), sort_keys=True, default=str)
+    print(hashlib.sha256(row_string.encode('utf-8')).hexdigest());
     return hashlib.sha256(row_string.encode('utf-8')).hexdigest()
 
 def is_duplicate(event_hash):
@@ -130,6 +133,3 @@ def mark_as_processed(event_hash):
         dedup_table.put_item(Item={'EventHash': event_hash, 'TTL': ttl})
     except Exception as e:
         print("DynamoDB write error:", e)
-
-def current_date_key():
-    return datetime.utcnow().strftime('%Y%m%d')

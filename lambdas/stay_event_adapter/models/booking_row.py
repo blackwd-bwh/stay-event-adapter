@@ -1,18 +1,31 @@
-# lambdas/stay_event_adapter/models/booking_row.py
-
+from dataclasses import dataclass, field, asdict
 from typing import Optional
-from pydantic import BaseModel
+from decimal import Decimal
 
-class BookingRow(BaseModel):
-    rewards_id: Optional[str]
-    reservation_id: Optional[str]
-    property_id: Optional[str]
-    arrival_dt_key: Optional[int]
-    departure_dt_key: Optional[int]
-    rate_code: Optional[str]
-    dim_dist_channel_3_key: Optional[str]
+def to_serializable(value):
+    if isinstance(value, Decimal):
+        # Convert to int if there's no fractional part, else to float
+        return int(value) if value == int(value) else float(value)
+    return value
+
+def safe_asdict(obj):
+    return {k: to_serializable(v) for k, v in asdict(obj).items()}
+
+@dataclass
+class BookingRow:
+    rewards_id: Optional[str] = None
+    resv_detail_id: Optional[str] = None
+    property_id: Optional[str] = None
+    arrival_dt_key: Optional[int] = None
+    departure_dt_key: Optional[int] = None
+    rate_code: Optional[str] = None
+    dim_dist_channel_3_key: Optional[str] = None
     cancel_dt_key: Optional[int] = None
     dim_dist_channel_1_key: Optional[str] = None
 
-class Config:
-    extra = "ignore"
+    @staticmethod
+    def from_dict(data: dict) -> 'BookingRow':
+        return BookingRow(**data)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
