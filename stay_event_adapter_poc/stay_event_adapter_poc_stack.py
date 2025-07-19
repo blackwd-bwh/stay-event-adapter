@@ -29,7 +29,7 @@ class StayEventAdapterPocStack(Stack):
     Includes SNS topics, SQS queues, Lambda functions, CloudWatch alarms,
     and Redshift secret configuration.
     """
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:  # pylint: disable=too-many-locals
         super().__init__(scope,
                         construct_id,
                         **kwargs)

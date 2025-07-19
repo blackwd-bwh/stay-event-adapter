@@ -1,10 +1,11 @@
+"""Simple SNS subscriber used for testing."""
+
 import json
 
-# AWS X-Ray instrumentation
-# from aws_xray_sdk.core import patch_all
-# patch_all()
 
-def handler(event, context):
+def handler(event, _context):
+    """Log the SNS message payload."""
+
     print("SNS event received:")
     print(json.dumps(event, indent=2))
 

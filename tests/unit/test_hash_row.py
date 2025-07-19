@@ -1,3 +1,5 @@
+"""Unit tests for the hash_row helper."""
+
 import os
 import sys
 import json
@@ -15,11 +17,13 @@ os.environ.setdefault("SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:123456789012:test"
 os.environ.setdefault("DEDUP_TABLE_NAME", "table")
 os.environ.setdefault("REDSHIFT_SECRET_ARN", "secret")
 
-import handler
-from models.booking_row import BookingRow
+from models.booking_row import BookingRow  # pylint: disable=wrong-import-position
+import handler  # pylint: disable=wrong-import-position
 
 
 def test_hash_row_returns_expected_digest():
+    """hash_row should produce a deterministic digest."""
+
     row = BookingRow(resv_nbr="1")
     digest = handler.hash_row(row)
 

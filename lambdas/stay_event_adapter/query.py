@@ -1,4 +1,4 @@
-# SQL query to fetch completed stays from Redshift
+"""SQL query string used by the adapter Lambda."""
 
 STAY_COMPLETED_QUERY = """
 SELECT
