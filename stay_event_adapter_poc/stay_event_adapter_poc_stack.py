@@ -1,43 +1,55 @@
-import os
-import random
-import string
+"""
+CDK stack definition for the Stay Event Adapter Proof of Concept.
+Sets up Lambda functions, queues, alarms, secrets, and supporting resources.
+"""
 
+import os
 from aws_cdk import (
     Stack,
     aws_lambda as lambda_fn,
-    aws_s3 as s3,
-    aws_s3_notifications as s3n,
+    aws_sqs as sqs,
     aws_sns as sns,
     aws_dynamodb as dynamodb,
-    aws_sqs as sqs,
     aws_cloudwatch as cw,
     aws_cloudwatch_actions as cw_actions,
     aws_sns_subscriptions as sns_subs,
     aws_logs as logs,
+    aws_secretsmanager as secretsmanager,
+    aws_ec2 as ec2,
     CfnOutput,
     Duration,
-    Environment,
-    RemovalPolicy
+    RemovalPolicy,
 )
+from aws_cdk.aws_lambda_event_sources import SqsEventSource
 from constructs import Construct
 
 class StayEventAdapterPocStack(Stack):
-
+    """
+    Defines the CDK stack for the Stay Event Adapter POC.
+    Includes SNS topics, SQS queues, Lambda functions, CloudWatch alarms,
+    and Redshift secret configuration.
+    """
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
-        super().__init__(scope, 
-                        construct_id, 
-                        env=Environment(
-                            account="456776821050",
-                            region="us-west-2"
-                        ),**kwargs
-        )
-        #
-        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        bucket_name = f"poc-stay-event-adapter-bucket-{random_suffix}"
-        
-        lambda_code_path = os.path.join(os.path.dirname(__file__), "..", "build")
+        super().__init__(scope,
+                        construct_id,
+                        **kwargs)
 
-        # StayCompleted SNS Topic
+        base_dir = os.path.join(os.path.dirname(__file__), "..", "lambdas")
+        adapter_lambda_path = os.path.join(base_dir, "stay_event_adapter")
+        test_lambda_path = os.path.join(base_dir, "test_subscriber")
+
+        # VPC and subnet config
+        vpc = ec2.Vpc.from_lookup(self, "LambdaVPC", vpc_id="vpc-0464ad6022ebb355c")
+
+        subnets = ec2.SubnetSelection(subnets=[
+            ec2.Subnet.from_subnet_id(self, "SubnetA", "subnet-0b351ffc6d0e80b7a"),  # us-west-2a
+            ec2.Subnet.from_subnet_id(self, "SubnetB", "subnet-0de5d59f7809d026b"),  # us-west-2b
+        ])
+
+        security_group = ec2.SecurityGroup.from_security_group_id(
+            self, "LambdaSG", "sg-0c6b6f611ff33a192"
+        )
+
         stay_completed_sns_topic = sns.Topic(self, "StayCompletedTopic",
             topic_name="poc-stay-event"
         )
@@ -47,7 +59,6 @@ class StayEventAdapterPocStack(Stack):
             export_name="StayCompletedTopicArn"
         )
 
-        # DLQ Alarm SNS Topic
         dlq_alarm_topic = sns.Topic(self, "DLQAlarmNotificationTopic",
             topic_name="stay-event-dlq-alarm-notifications"
         )
@@ -56,13 +67,11 @@ class StayEventAdapterPocStack(Stack):
             sns_subs.EmailSubscription("dayna.blackwell@bwh.com")
         )
 
-        # Dead Letter Queue for failed Lambda (Stay Adapter) invocations
         dlq = sqs.Queue(self, "StayEventDLQ",
             queue_name="poc-stay-event-dlq",
             retention_period=Duration.days(14)
         )
 
-        # CloudWatch alarm for DLQ
         dlq_alarm = cw.Alarm(self, "DLQMessageAlarm",
             alarm_name="StayEventDLQHasMessages",
             metric=dlq.metric_approximate_number_of_messages_visible(),
@@ -75,7 +84,6 @@ class StayEventAdapterPocStack(Stack):
 
         dlq_alarm.add_alarm_action(cw_actions.SnsAction(dlq_alarm_topic))
 
-        # DynamoDB table for deduplication
         dedup_table = dynamodb.Table(
             self, "StayEventDedupTable",
             partition_key=dynamodb.Attribute(
@@ -87,52 +95,66 @@ class StayEventAdapterPocStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        # S3 bucket for Stay data
-        data_bucket = s3.Bucket(self, "DataBucket",
-            bucket_name=bucket_name,
-            public_read_access=False,
-            auto_delete_objects=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+        data_available_queue = sqs.Queue(
+            self, "DataAvailableQueue",
+            queue_name="stay-event-data-available",
+            retention_period=Duration.hours(2),
+            visibility_timeout=Duration.seconds(120)
+        )
+
+        redshift_secret_arn = (
+            "arn:aws:secretsmanager:us-west-2:456776821050:secret:"
+            "promo-engine/redshift-credentials-VYpjGO"
+        )
+
+        redshift_secret = secretsmanager.Secret.from_secret_complete_arn(
+            self,
+            "RedshiftCredentialsSecret",
+            redshift_secret_arn,
+        )
+
+        data_services_layer = lambda_fn.LayerVersion(
+            self, "DataServicesLayer",
+            layer_version_name="data-services-layer",
+            compatible_runtimes=[lambda_fn.Runtime.PYTHON_3_13],
+            code=lambda_fn.Code.from_asset("lambda-layers/data-services-layer.zip"),
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        # (Dev only) Output the bucket name for deployment script
-        CfnOutput(self, "DataBucketNameOutput",
-            value=data_bucket.bucket_name,
-            description="The name of the data S3 bucket",
-            export_name="StayEventAdapterDataBucketName"
-        )
-
-        # Lambda function for processing
         stay_event_adapter_lambda = lambda_fn.Function(
             self, "StayEventAdapterLambda",
             runtime=lambda_fn.Runtime.PYTHON_3_13,
-            handler="stay_event_adapter.handler.handler",
-            code=lambda_fn.Code.from_asset(lambda_code_path),
+            handler="handler.handler",
+            code=lambda_fn.Code.from_asset(adapter_lambda_path),
             timeout=Duration.seconds(90),
             tracing=lambda_fn.Tracing.ACTIVE,
             dead_letter_queue=dlq,
+            vpc=vpc,
+            vpc_subnets=subnets,
+            security_groups=[security_group],
+            layers=[data_services_layer],
             environment={
                 "SNS_TOPIC_ARN": stay_completed_sns_topic.topic_arn,
-                "BUCKET_NAME": data_bucket.bucket_name,
-                "DEDUP_TABLE_NAME": dedup_table.table_name
-            }
+                "DEDUP_TABLE_NAME": dedup_table.table_name,
+                "REDSHIFT_SECRET_ARN": redshift_secret.secret_arn,
+                "AWS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
+                "REQUESTS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
+                "SSL_CERT_FILE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem"
+            },
         )
 
-        # Attach S3 event notification to Stay Adapter Lambda
-        notification = s3n.LambdaDestination(stay_event_adapter_lambda)
-        data_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, notification)
+        stay_event_adapter_lambda.add_event_source(
+            SqsEventSource(data_available_queue)
+        )
 
-        # Lambda function for SNS subscription
         test_subscriber_lambda = lambda_fn.Function(
             self, "TestSnsSubscriberLambda",
             runtime=lambda_fn.Runtime.PYTHON_3_13,
-            handler="test_subscriber.handler.handler",
-            code=lambda_fn.Code.from_asset(lambda_code_path),
+            handler="handler.handler",
+            code=lambda_fn.Code.from_asset(test_lambda_path),
             tracing=lambda_fn.Tracing.ACTIVE,
         )
 
-        # Dev only, allows logs to be destroyed with the stack
         logs.LogGroup(self, "StayEventAdapterLambdaLogGroup",
             log_group_name=f"/aws/lambda/{stay_event_adapter_lambda.function_name}",
             removal_policy=RemovalPolicy.DESTROY,
@@ -147,7 +169,19 @@ class StayEventAdapterPocStack(Stack):
             sns_subs.LambdaSubscription(test_subscriber_lambda)
         )
 
-        # Grant permissions
-        data_bucket.grant_read(stay_event_adapter_lambda)
+        redshift_secret.grant_read(stay_event_adapter_lambda)
+        data_available_queue.grant_consume_messages(stay_event_adapter_lambda)
         stay_completed_sns_topic.grant_publish(stay_event_adapter_lambda)
         dedup_table.grant_read_write_data(stay_event_adapter_lambda)
+
+        ec2.GatewayVpcEndpoint(self, "DynamoDbVpcEndpoint",
+            service=ec2.GatewayVpcEndpointAwsService.DYNAMODB,
+            vpc=vpc,
+        )
+
+        ec2.InterfaceVpcEndpoint(self, "SnsVpcEndpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.SNS,
+            vpc=vpc,
+            subnets=subnets,
+            security_groups=[security_group]
+        )
