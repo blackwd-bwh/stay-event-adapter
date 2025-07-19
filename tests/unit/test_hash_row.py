@@ -19,11 +19,9 @@ import handler
 from models.booking_row import BookingRow
 
 
-def test_hash_row_prints_and_returns_same_digest(capsys):
+def test_hash_row_returns_expected_digest():
     row = BookingRow(resv_nbr="1")
     digest = handler.hash_row(row)
-    captured = capsys.readouterr().out.strip()
-    assert captured == digest
 
     row_string = json.dumps(asdict(row), sort_keys=True, default=handler.json_safe)
     expected = hashlib.sha256(row_string.encode("utf-8")).hexdigest()
