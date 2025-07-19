@@ -1,9 +1,12 @@
+"""Data model representing a booking row fetched from Redshift."""
+
 from dataclasses import dataclass, asdict, fields
 from typing import Optional
 from decimal import Decimal
 
 @dataclass
-class BookingRow:
+class BookingRow:  # pylint: disable=too-many-instance-attributes
+    """Container for all fields returned by the stay-completed query."""
     resv_nbr: Optional[str] = None
     resv_detail_id: Optional[str] = None
     booking_dt_key: Optional[str] = None
@@ -107,9 +110,13 @@ class BookingRow:
         return BookingRow(**filtered)
 
     def to_dict(self) -> dict:
+        """Return a dictionary representation of the dataclass."""
+
         return asdict(self)
 
 def safe_asdict(obj: BookingRow) -> dict:
+    """Serialize a BookingRow to a dict converting Decimals to floats."""
+
     return {
         k: float(v) if isinstance(v, Decimal) else v
         for k, v in asdict(obj).items()
