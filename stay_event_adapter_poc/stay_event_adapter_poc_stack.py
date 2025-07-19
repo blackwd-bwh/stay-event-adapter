@@ -137,8 +137,9 @@ class StayEventAdapterPocStack(Stack):
                 "SNS_TOPIC_ARN": stay_completed_sns_topic.topic_arn,
                 "DEDUP_TABLE_NAME": dedup_table.table_name,
                 "REDSHIFT_SECRET_ARN": redshift_secret.secret_arn,
-                "REQUESTS_CA_BUNDLE": "/opt/python/certifi/cacert.pem",  # <-- add this line
-                "SSL_CERT_FILE": "/opt/python/certifi/cacert.pem"
+                "AWS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
+                "REQUESTS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
+                "SSL_CERT_FILE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem"
             },
         )
 
@@ -172,3 +173,15 @@ class StayEventAdapterPocStack(Stack):
         data_available_queue.grant_consume_messages(stay_event_adapter_lambda)
         stay_completed_sns_topic.grant_publish(stay_event_adapter_lambda)
         dedup_table.grant_read_write_data(stay_event_adapter_lambda)
+
+        ec2.GatewayVpcEndpoint(self, "DynamoDbVpcEndpoint",
+            service=ec2.GatewayVpcEndpointAwsService.DYNAMODB,
+            vpc=vpc,
+        )
+
+        ec2.InterfaceVpcEndpoint(self, "SnsVpcEndpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.SNS,
+            vpc=vpc,
+            subnets=subnets,
+            security_groups=[security_group]
+        )
