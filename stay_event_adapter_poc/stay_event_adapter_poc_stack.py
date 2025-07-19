@@ -137,9 +137,6 @@ class StayEventAdapterPocStack(Stack):
                 "SNS_TOPIC_ARN": stay_completed_sns_topic.topic_arn,
                 "DEDUP_TABLE_NAME": dedup_table.table_name,
                 "REDSHIFT_SECRET_ARN": redshift_secret.secret_arn,
-                "AWS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
-                "REQUESTS_CA_BUNDLE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem",
-                "SSL_CERT_FILE": "/opt/python/lib/python3.13/site-packages/certifi/cacert.pem"
             },
         )
 

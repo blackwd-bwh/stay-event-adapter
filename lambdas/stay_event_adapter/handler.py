@@ -8,26 +8,14 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-# Monkey patch ssl to use certifi for all clients
-import ssl
-import certifi
-ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
-os.environ['AWS_CA_BUNDLE'] = certifi.where()
-
-# Patch botocore session to use certifi CA bundle globally
-import botocore.session
-botocore_session = botocore.session.get_session()
-botocore_session.set_config_variable("ca_bundle", certifi.where())
-
-# boto3 with patched session
+# Standard AWS clients
 import boto3
 import redshift_connector
 from models.booking_row import BookingRow
 
-boto3_session = boto3.Session(botocore_session=botocore_session)
-dynamodb_client = boto3_session.client("dynamodb")
-sns_client = boto3_session.client("sns")
-secrets_client = boto3_session.client("secretsmanager")
+dynamodb_client = boto3.client("dynamodb")
+sns_client = boto3.client("sns")
+secrets_client = boto3.client("secretsmanager")
 
 # Environment vars
 SNS_TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
