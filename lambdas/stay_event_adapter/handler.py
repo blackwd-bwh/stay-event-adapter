@@ -22,6 +22,7 @@ botocore_session.set_config_variable("ca_bundle", certifi.where())
 import boto3
 import redshift_connector
 from models.booking_row import BookingRow
+from query import STAY_COMPLETED_QUERY
 
 boto3_session = boto3.Session(botocore_session=botocore_session)
 dynamodb_client = boto3_session.client("dynamodb")
@@ -50,105 +51,7 @@ def handler(event, _):
         conn = get_redshift_connection()
         cursor = conn.cursor()
 
-        query = """
-        SELECT
-            resv_nbr,
-            resv_detail_id,
-            booking_dt_key,
-            arrival_dt_key,
-            departure_dt_key,
-            cancel_dt_key,
-            conf_nbr,
-            nbr_adults,
-            nbr_children,
-            dim_property_key,
-            property_id,
-            dist_channel_0,
-            rewards_id,
-            dim_ta_key,
-            ta_id,
-            dim_ca_key,
-            ca_id,
-            dim_rate_code_key,
-            dim_rewards_key,
-            rate_code,
-            dim_room_type_key,
-            room_category,
-            dim_country_origin_key,
-            country_origin_code,
-            record_update_dttm,
-            stay,
-            stay_before_cancellation,
-            length_of_stay,
-            length_of_stay_before_cancellation,
-            rev_local_curr,
-            rev_usd,
-            rev_before_cancellation_local_curr,
-            rev_before_cancellation_usd,
-            roomnights,
-            roomnights_before_cancellation,
-            adr_usd,
-            adr_local_curr,
-            adr_before_cancellation_usd,
-            adr_before_cancellation_local_curr,
-            vat_usd,
-            vat_local_curr,
-            vat_usd_departure,
-            vat_local_curr_departure,
-            dim_dist_channel_1_key,
-            dim_dist_channel_2_key,
-            dim_dist_channel_3_key,
-            dim_dist_channel_4_key,
-            dim_business_source_key,
-            business_source_code,
-            booking_exchange_rate,
-            booking_currency_code,
-            property_currency_exchange_rate,
-            property_currency_code,
-            name_id,
-            ota_enroll_ind,
-            wh_conf_nbr,
-            sx_ind,
-            lynx_ad_code,
-            operator_user_id,
-            guarantee_code,
-            rate_code_original,
-            dim_rate_code_original_key,
-            dim_parent_acct_key,
-            dim_sales_mgr_key,
-            comm_ind,
-            dim_operator_worker_key,
-            operator_worker_id,
-            dim_rate_header_market_segment_key,
-            dim_update_operator_worker_key,
-            update_operator_worker_id,
-            gds_record_locator,
-            source_record_update_dttm,
-            dim_guest_key,
-            guest_id,
-            cancel_by_date,
-            leg_no,
-            original_leg_no,
-            booking_dttm,
-            dim_guest_departure_dt_key,
-            batch_ind,
-            batch_update_dttm,
-            rev_usd_fx,
-            rev_local_curr_fx,
-            day_use_ind,
-            no_show_ind,
-            external_reference,
-            crx_resv_ind
-        FROM bwhrdw.fact_bookings
-        WHERE departure_dt_key::DATE = CURRENT_DATE
-            AND rewards_id IS NOT NULL
-            AND rewards_id <> 'XXXXX'
-            AND cancel_dt_key IS NULL
-            AND rate_code <> 'FX'
-            AND dim_dist_channel_1_key <> '4'
-        """
-
-        cursor.execute(query)
+        cursor.execute(STAY_COMPLETED_QUERY)
         columns = [desc[0] for desc in cursor.description]
         rows = [
             BookingRow.from_dict(dict(zip(columns, row)))
@@ -200,8 +103,9 @@ def publish_event(payload):
 
 def hash_row(row: BookingRow):
     row_string = json.dumps(asdict(row), sort_keys=True, default=json_safe)
-    print(hashlib.sha256(row_string.encode('utf-8')).hexdigest())
-    return hashlib.sha256(row_string.encode('utf-8')).hexdigest()
+    digest = hashlib.sha256(row_string.encode("utf-8")).hexdigest()
+    print(digest)
+    return digest
 
 def is_duplicate(event_hash):
     try:
